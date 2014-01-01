@@ -1,3 +1,6 @@
-name: Your New Jekyll Site
+name: Dragworld with GMaps
 markdown: redcarpet
 pygments: true
+javascripts :
+  enabled: true
+  baseUrl: "/js"
