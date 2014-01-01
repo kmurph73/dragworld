@@ -1,27 +1,42 @@
 _ = @_
+
 window.data = data = {
   open_countries: []
-  loaded_countries: []
 }
-loadedCountries = data.loaded_countries
+
 openCountries = data.open_countries
 
-getLoadedCountry = (name) ->
-  _.find loadedCountries, (loadedCountry) -> loadedCountry.name == name
+getOpenCountry = (name, prop = 'name') ->
+  _.find openCountries, (c) -> c[prop] == name
 
 loadCountry = (c) ->
-  country = getLoadedCountry(c.name)
+  country = getOpenCountry(c.name)
   if not country
-    loadedCountries.push c
+    openCountries.push c
     renderCountries()
+
+$ ->
+  $(document).on 'mouseenter', '.tip', -> $(this).tooltip().tooltip('show')
+  $(document).on 'mouseleave', '.tip', -> $(this).tooltip('hide')
 
 renderCountries = ->
   oDiv = $('#open_countries').empty()
 
-  for c in loadedCountries
-    html = "<span id='#{c.abbrev}'>#{c.name}</span>"
-    oDiv.append "<div>" + html + " <a href='#' class='remove'>remove</a>
-      <a href='#' class='refresh'>refresh</a></div>"
+  len = openCountries.length
+  for c,index in openCountries
+    html =
+     "<span id='#{c.abbrev}'>#{c.name}
+        <a href='#' class='tip remove' title='remove'>x</a>
+        <a href='#' class='tip reset' title='reset'>r</a>
+      </span>"
+
+    if index + 1 != len
+      html += " - "
+
+    oDiv.append html
+
+
+  index = _.indexOf(openCountries, c)
 
 initialize = ->
   mapOptions =
@@ -31,7 +46,43 @@ initialize = ->
 
   data.map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions)
 
-removeFromMap = (c) ->
+removeCountry = (c) ->
+  removePolygons(c)
+  openCountries = _.without openCountries, c
+  renderCountries()
+
+removePolygons = (c) ->
+  for poly in c.polygons
+    poly.setMap(null)
+
+resetCountry = (c) ->
+  removePolygons(c)
+  renderPolygons(c)
+
+renderPolygons = (country) ->
+  country.polygons = polys = []
+  map = data.map
+
+  for poly in country.data.polygons
+    coords = []
+    for point in poly.points
+      if point.length == 2
+        coords.push(new google.maps.LatLng(point[0], point[1]))
+
+    polygon = {}
+
+    polygon = new google.maps.Polygon
+      map: map
+      paths: coords
+      strokeColor: "#FF0000"
+      strokeOpacity: 0.8
+      strokeWeight: 1
+      fillColor: "#FF0000"
+      fillOpacity: 0.35
+      draggable: true
+      geodesic: true
+
+    polys.push polygon
 
 $ ->
   meta = window.meta
@@ -42,66 +93,34 @@ $ ->
     local: country_names,
     limit: 10
   ).on 'typeahead:selected', (e,selected, dataName) ->
-    val = selected.value
-    country = getLoadedCountry(val)
+    target = $(e.currentTarget)
+    target.val('')
 
-    if country
-      displayCountry(country)
-    else
-      map = data.map
+    val = selected.value
+
+    map = data.map
+
+    country = getOpenCountry(val)
+    if not country
       country = _.find(meta, (c) -> val == c.name)
-      country.polygons = polys = []
 
       $.getJSON("public/data/countries/#{country.abbrev}.json").then (resp) ->
-        for poly in resp.polygons
-          coords = []
-          for point in poly.points
-            if point.length == 2
-              coords.push(new google.maps.LatLng(point[0], point[1]))
+        country.data = resp
+        renderPolygons(country)
 
-          polygon = {}
-
-          polygon = new google.maps.Polygon(
-            map: map
-            paths: coords
-            strokeColor: "#FF0000"
-            strokeOpacity: 0.8
-            strokeWeight: 1
-            fillColor: "#FF0000"
-            fillOpacity: 0.35
-            draggable: true
-            geodesic: true
-          )
-
-          polys.push polygon
         loadCountry(country)
 
-  ##for country in window.data.views[0].features
-  ##  if country.id == 'JP'
-  ##    for pg in country.polygons
-  ##      c = []
-  ##      for coord in pg.shell
-  ##        c.push new google.maps.LatLng(coord[0],coord[1])
-  ##      myCoords.push c
-  ##
-  #$.getJSON('public/data/countries/taiwan.json').then(
-  #  (tw) ->
-  #    for p in tw.polygons
-  #      coords = []
-  #      for point in p.points
-  #        if point.length == 2
-  #          coords.push(new google.maps.LatLng(point[0], point[1]))
+  $('#open_countries').on 'click', 'a', (e) ->
+    e.preventDefault()
+    target = $(e.currentTarget)
 
-  #      if arr = 1
-  #        new google.maps.Polygon(
-  #          map: map
-  #          paths: coords
-  #          strokeColor: "#FF0000"
-  #          strokeOpacity: 0.8
-  #          strokeWeight: 1
-  #          fillColor: "#FF0000"
-  #          fillOpacity: 0.35
+    abbrev = target.closest('span').attr('id')
+    country = getOpenCountry abbrev, 'abbrev'
 
+    if target.hasClass('remove')
+      removeCountry(country)
+    else if target.hasClass('reset')
+      resetCountry(country)
 
 
 google.maps.event.addDomListener window, "load", initialize
